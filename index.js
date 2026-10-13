@@ -9,10 +9,40 @@ const { core, mpv, menu, console } = iina;
 
 console.log("Stream Helper plugin initialized.");
 
+// Automatically configure ytdl-format on startup to prevent audio/video protocol mismatch
+// MX Player provides video in HLS and audio in DASH. Without protocol matching,
+// IINA receives separate incompatible streams resulting in video with no sound.
+try {
+  mpv.set(
+    "ytdl-format",
+    "bestvideo[protocol*=dash]+bestaudio[protocol*=dash]/bestvideo+bestaudio/best"
+  );
+  console.log("Configured ytdl-format with DASH protocol matching.");
+} catch (e) {
+  console.log("Initial ytdl-format set failed: " + e);
+}
+
 // Create the top-level menu item in IINA's "Plugin" menu
 const streamMenu = menu.item("Stream Helper");
 
-// Submenu Item 1: Optimize buffer for HLS (.m3u8) streams
+// Submenu Item 1: Fix audio by enforcing matched stream protocols
+streamMenu.addSubmenuItem(
+  menu.item("Fix Missing Audio (Match Protocols)", () => {
+    try {
+      mpv.set(
+        "ytdl-format",
+        "bestvideo[protocol*=dash]+bestaudio[protocol*=dash]/bestvideo+bestaudio/best"
+      );
+      core.osd("Audio fix applied (DASH sync enabled)");
+      console.log("Applied DASH protocol matching for audio-video sync.");
+    } catch (err) {
+      console.log("Error configuring audio fix: " + err);
+      core.osd("Failed to apply audio fix");
+    }
+  })
+);
+
+// Submenu Item 2: Optimize buffer for streaming
 streamMenu.addSubmenuItem(
   menu.item("Optimize Buffer (150MB)", () => {
     try {
@@ -27,7 +57,7 @@ streamMenu.addSubmenuItem(
   })
 );
 
-// Submenu Item 2: Enable auto-reconnection for unstable networks
+// Submenu Item 3: Enable auto-reconnection for unstable networks
 streamMenu.addSubmenuItem(
   menu.item("Enable Stream Reconnection", () => {
     try {
@@ -42,7 +72,7 @@ streamMenu.addSubmenuItem(
   })
 );
 
-// Submenu Item 3: Show active stream buffering status
+// Submenu Item 4: Show active stream buffering status
 streamMenu.addSubmenuItem(
   menu.item("Check Stream Cache Status", () => {
     try {
@@ -63,7 +93,7 @@ streamMenu.addSubmenuItem(
   })
 );
 
-// Submenu Item 4: Apply Standard Browser Headers for CDN Verification
+// Submenu Item 5: Apply Standard Browser Headers for CDN Verification
 streamMenu.addSubmenuItem(
   menu.item("Apply Browser User-Agent", () => {
     try {
