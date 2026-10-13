@@ -1,0 +1,20 @@
+{
+  "name": "Stream Helper",
+  "identifier": "com.pravinghodake.iina.streamhelper",
+  "version": "1.0.0",
+  "description": "IINA plugin for enhanced streaming, custom headers, HLS cache management, and yt-dlp playback",
+  "entry": "index.js",
+  "ghRepo": "Pravinghodake153/iina",
+  "ghVersion": 1,
+  "author": {
+    "name": "Pravin Ghodake",
+    "url": "https://github.com/Pravinghodake153"
+  },
+  "permissions": [
+    "show-osd",
+    "network-request"
+  ],
+  "allowedDomains": [
+    "*"
+  ]
+}

@@ -1,173 +1,95 @@
-# IINA + yt-dlp Streaming Helper
+# Stream Helper for IINA
 
-A production configuration and plugin repository for optimizing online media playback in [IINA](https://iina.io) on macOS using [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+A native plugin and streaming configuration repository for [IINA](https://iina.io) on macOS.
 
----
-
-## Overview
-
-IINA is a modern media player built for macOS. Under the hood, IINA uses **mpv** for audio/video playback and **yt-dlp** to extract media streams from web links.
-
-Many web video streams fail or buffer because:
-1. Media servers require specific HTTP headers (such as `Referer` or `Origin`) to authorize playback.
-2. Streams are delivered as segmented HTTP Live Streaming manifests (`.m3u8` HLS) requiring continuous reconnection and adaptive bitrate switching.
-3. Audio and video tracks are delivered separately and must be demuxed smoothly.
-
-This repository provides:
-* **Extractor Plugin Scaffold:** A clean Python plugin structure for `yt-dlp` to inject required authorization headers and extract `.m3u8` manifests.
-* **MX Player Reference Helper:** Implementation demonstrating how to extract streams and state metadata from MX Player (`mxplayer.in`).
-* **Optimized mpv Configuration:** Cache, buffering, and format-selection parameters tailored for macOS.
+This repository is formatted as a native IINA plugin package so you can **install it directly inside IINA by pasting the GitHub repository link**.
 
 ---
 
-## System Architecture
+## Quick Install in IINA (One-Click Setup)
 
-```
-User pastes URL into IINA (File -> Open URL)
-                     │
-                     ▼
-             IINA Player UI
-                     │
-                     ▼
-           mpv Playback Engine
-                     │
-                     ▼
-               yt-dlp CLI
-                     │
-                     ▼ Matches URL
-       Custom Extractor Plugin (Python)
-         ├── 1. Fetches webpage / state JSON
-         ├── 2. Extracts .m3u8 HLS playlist
-         └── 3. Attaches Referer & Origin headers
-                     │
-                     ▼
-   mpv streams video & audio chunks via CDN
-                     │
-                     ▼
-            Smooth Playback in IINA
-```
+You can install this plugin directly inside IINA without touching the terminal:
+
+1. Open **IINA**.
+2. Open Settings by pressing `Cmd + ,` (or go to **IINA** -> **Settings** in the top menu).
+3. Click the **Plugins** tab on the left sidebar.
+4. Click **Install from GitHub...** (or the `+` button at the bottom).
+5. Paste your repository link:
+   ```text
+   Pravinghodake153/iina
+   ```
+   *(or `https://github.com/Pravinghodake153/iina`)*
+6. Click **Install**.
+
+Once installed, **Stream Helper** will appear in your top menu bar under **Plugin** -> **Stream Helper** whenever a video window is active.
 
 ---
 
-## Directory Structure
+## Features
+
+* **Direct GitHub Installation:** Includes `Info.json` with auto-update metadata recognized by IINA's built-in plugin manager.
+* **In-App Menu Controls:**
+  * **Optimize Buffer (150MB):** Dynamically expands the stream buffer so multi-part `.m3u8` playlists and live streams do not pause or stutter.
+  * **Enable Stream Reconnection:** Configures a 15-second reconnect timeout and a 4MB burst buffer to recover from dropouts.
+  * **Check Stream Cache Status:** Displays on-screen display (OSD) feedback showing how many seconds of video are currently buffered in RAM.
+  * **Apply Browser User-Agent:** Prevents content delivery networks (CDNs) from blocking playback with HTTP 403 Forbidden errors.
+* **yt-dlp Backend Support:** Contains a Python extractor helper demonstrating how `yt-dlp` extracts `.m3u8` streams and injects `Referer` and `Origin` headers.
+
+---
+
+## Repository Structure
 
 ```text
-iina/
-├── README.md                      # Documentation and usage guide
-├── pyproject.toml                 # Packaging specification for yt-dlp plugins
+Pravinghodake153/iina/
+├── Info.json                      # Native IINA plugin manifest for GitHub installation
+├── plugin.json                    # Manifest alias
+├── index.js                       # JavaScript entry script executed inside IINA
+├── pyproject.toml                 # yt-dlp Python package specification
+├── README.md                      # Setup and usage guide
 ├── config/
-│   └── mpv.conf                   # Streaming and cache settings for mpv
+│   └── mpv.conf                   # Standalone mpv caching and stream configuration
 └── yt_dlp_plugins/
     └── extractor/
-        ├── __init__.py            # Namespace package initializer
-        └── mxplayer_helper.py     # Stream extraction and header injection helper
+        ├── __init__.py            # yt-dlp plugin namespace initializer
+        └── mxplayer_helper.py     # Python extractor helper for HLS and headers
 ```
 
 ---
 
-## Prerequisites (macOS)
+## Backend Requirements (For yt-dlp Web Extraction)
 
-To use custom extractors and stream web videos in IINA, ensure you have the following installed:
+While the UI plugin installs directly inside IINA, web stream link extraction relies on `yt-dlp` and `ffmpeg` installed on your Mac:
 
-1. **Install IINA:**
-   Download from [iina.io](https://iina.io) or install via Homebrew:
-   ```bash
-   brew install --cask iina
-   ```
-
-2. **Install yt-dlp and FFmpeg:**
+1. **Install via Homebrew:**
    ```bash
    brew install yt-dlp ffmpeg
    ```
-   * *Why FFmpeg?* FFmpeg allows `yt-dlp` and `mpv` to join split audio and video tracks without quality loss.
+2. **Verify IINA Network Settings:**
+   * Open **IINA** -> **Settings** (`Cmd + ,`) -> **Network**.
+   * Make sure **Enable yt-dlp** is checked.
+   * Path should point to `/opt/homebrew/bin/yt-dlp` (Apple Silicon) or `/usr/local/bin/yt-dlp` (Intel).
 
 ---
 
-## Installation & Setup
+## Concepts Explained Simply
 
-### 1. Install the yt-dlp Plugin
-
-To enable the custom extractor plugin globally on your Mac:
-
-```bash
-# 1. Create the standard yt-dlp plugin directory
-mkdir -p ~/.config/yt-dlp/plugins/iina-helper/yt_dlp_plugins/extractor
-
-# 2. Copy the plugin file into place
-cp yt_dlp_plugins/extractor/mxplayer_helper.py ~/.config/yt-dlp/plugins/iina-helper/yt_dlp_plugins/extractor/
-```
-
-Verify that `yt-dlp` detects the plugin:
-```bash
-yt-dlp --list-extractors | grep -i mxplayer
-```
-
-### 2. Apply Optimized mpv Streaming Settings
-
-Copy the provided `mpv.conf` to your personal configuration folder:
-
-```bash
-mkdir -p ~/.config/mpv
-cp config/mpv.conf ~/.config/mpv/mpv.conf
-```
-
-Key settings included in `mpv.conf`:
-* `cache=yes`: Prevents video stuttering on slower internet connections.
-* `demuxer-max-bytes=150M`: Allocates up to 150MB of memory buffer for continuous playback.
-* `stream-buffer-size=4MiB`: Ensures responsive seeking in live and HLS streams.
-* `user-agent`: Standard desktop browser identifier to avoid CDN access blocks.
-
-### 3. Configure IINA Settings
-
-1. Open **IINA**.
-2. Press `Cmd + ,` to open **Settings**.
-3. Go to the **Network** tab:
-   * Check **Enable yt-dlp**.
-   * Set **Custom yt-dlp path** to:
-     * `/opt/homebrew/bin/yt-dlp` (for Apple Silicon Macs: M1, M2, M3, M4)
-     * `/usr/local/bin/yt-dlp` (for Intel Macs)
-4. (Optional) Go to the **Advanced** tab:
-   * Check **Use config directory**.
-   * Set the path to `~/.config/mpv`.
-
----
-
-## How It Works (Concepts Explained Simply)
-
-### 1. What is an Extractor?
-When you paste `https://www.mxplayer.in/show/...` into IINA, the media player does not know how to play the web page directly because a web page is full of HTML, styles, and buttons—not raw video.
-An **extractor** is a Python script that acts like a translator. It visits the page, ignores the visual clutter, finds the exact stream URL (the `.m3u8` playlist), and hands it to the player.
-
-### 2. Why Are HTTP Headers Needed?
-Many servers check the `Referer` header of every incoming request. If a request comes from an external media player without a valid `Referer`, the server responds with `403 Forbidden` and cuts the connection.
-The extractor solves this by attaching:
-```python
-custom_headers = {
-    'Referer': 'https://www.mxplayer.in/',
-    'Origin': 'https://www.mxplayer.in',
-}
-```
-This tells the media server that the request is authorized, allowing the stream to start.
-
-### 3. What is an `.m3u8` File?
-An `.m3u8` file is a playlist for **HLS (HTTP Live Streaming)**. Instead of sending one massive 2-hour video file, the server splits the video into small 6-second fragments. The `.m3u8` file lists all these pieces so IINA can fetch them one by one.
+1. **What is `Info.json`?**
+   `Info.json` is like an ID card for the plugin. When you paste your GitHub link into IINA, IINA reads this file first to learn the plugin's name, version, and which script (`index.js`) to run.
+2. **What does `index.js` do?**
+   It communicates with IINA's internal video engine (`mpv`). When you click a menu item in IINA, `index.js` tells the player to expand its memory buffer or display a notification on your screen.
+3. **What is an `.m3u8` file?**
+   Modern web videos are split into hundreds of small 6-second clips. An `.m3u8` file is the master list (playlist) that tells the player where each clip is located so it can play them back seamlessly.
 
 ---
 
 ## Troubleshooting
 
-### Error: "Cannot open URL" or "No video formats found"
-1. **Update yt-dlp:** Streaming websites frequently change their internal layouts. Keep yt-dlp updated:
-   ```bash
-   yt-dlp -U
-   # Or if installed via Homebrew:
-   brew upgrade yt-dlp
-   ```
-2. **Check yt-dlp Path in IINA:**
-   Verify that IINA's Network tab points to the correct `yt-dlp` executable location. Run `which yt-dlp` in your terminal to confirm the path.
-
-### Video Plays but There is No Sound
-Install FFmpeg (`brew install ffmpeg`). Without FFmpeg, split audio streams cannot be merged during playback.
+* **IINA says "Cannot find Info.json":**
+  Ensure you typed `Pravinghodake153/iina` correctly in the **Install from GitHub** box.
+* **Plugin menu is greyed out:**
+  IINA activates plugin menus when a video or player window is open. Open any media file or stream URL to access the menu items.
+* **Stream fails with 403 Forbidden:**
+  Select **Plugin** -> **Stream Helper** -> **Apply Browser User-Agent** or ensure your `yt-dlp` installation is up-to-date (`brew upgrade yt-dlp`).
 
 ---
 
