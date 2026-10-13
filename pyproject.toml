@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iina-ytdlp-stream-helper"
+version = "0.1.0"
+description = "yt-dlp plugin and configuration helper for IINA media player on macOS"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "yt-dlp>=2023.1.0"
+]
+authors = [
+    { name = "Pravin Ghodake", email = "ghodakepravin153@gmail.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: MacOS :: MacOS X",
+    "Topic :: Multimedia :: Video",
+]
+
+[project.urls]
+Homepage = "https://github.com/Pravinghodake153/iina"
+Repository = "https://github.com/Pravinghodake153/iina.git"
