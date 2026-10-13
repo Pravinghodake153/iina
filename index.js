@@ -1,113 +1,190 @@
 /**
- * Stream Helper - Native IINA Plugin
- * -----------------------------------
- * This script runs inside IINA's JavaScript runtime when the plugin is installed.
- * It provides interactive controls in the macOS menu bar under "Plugin" -> "Stream Helper".
+ * Stream Helper - Universal Streaming Engine for IINA
+ * ----------------------------------------------------
+ * Automatically intercepts web URLs opened in IINA, injects the correct
+ * HTTP Referer/Origin headers, and synchronizes video and audio streams
+ * to prevent silent playback across all supported websites.
  */
 
-const { core, mpv, menu, console } = iina;
+const { core, mpv, menu, event, console } = iina;
 
-console.log("Stream Helper plugin initialized.");
+console.log("Stream Helper: Universal Streaming Engine initializing...");
 
-// Automatically configure ytdl-format on startup to prevent audio/video protocol mismatch
-// MX Player provides video in HLS and audio in DASH. Without protocol matching,
-// IINA receives separate incompatible streams resulting in video with no sound.
-try {
-  mpv.set(
-    "ytdl-format",
-    "bestvideo[protocol*=dash]+bestaudio[protocol*=dash]/bestvideo+bestaudio/best"
-  );
-  console.log("Configured ytdl-format with DASH protocol matching.");
-} catch (e) {
-  console.log("Initial ytdl-format set failed: " + e);
+// Standard Desktop Browser User-Agent
+const DESKTOP_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+// Universal Format Selector Chain:
+// 1. Matched DASH: Pairs DASH video with DASH audio (same manifest)
+// 2. Matched HLS: Pairs HLS video with HLS audio (same playlist)
+// 3. Combined stream: Direct video with audio included (single mp4/webm)
+// 4. Best video + Best audio: Standard separated streams (e.g. YouTube)
+// 5. Fallback: Any available best stream
+const UNIVERSAL_YTDL_FORMAT =
+  "bestvideo[protocol*=dash]+bestaudio[protocol*=dash]/bestvideo[protocol*=m3u8]+bestaudio[protocol*=m3u8]/best[vcodec!=none][acodec!=none]/bestvideo+bestaudio/best";
+
+/**
+ * Configure baseline player properties
+ */
+function applyBaselineSettings() {
+  try {
+    mpv.set("ytdl", true);
+    mpv.set("ytdl-format", UNIVERSAL_YTDL_FORMAT);
+    mpv.set("user-agent", DESKTOP_USER_AGENT);
+    mpv.set("cache", true);
+    mpv.set("demuxer-max-bytes", 157286400); // 150MB buffer
+    mpv.set("demuxer-max-back-bytes", 52428800); // 50MB back buffer
+    mpv.set("stream-buffer-size", "4MiB");
+    mpv.set("network-timeout", 20);
+    console.log("Stream Helper: Baseline settings applied.");
+  } catch (err) {
+    console.log("Stream Helper: Error setting baseline properties: " + err);
+  }
 }
 
-// Create the top-level menu item in IINA's "Plugin" menu
+applyBaselineSettings();
+
+/**
+ * Hook: on_load
+ * Triggers before any stream or file is loaded.
+ * Dynamically detects website links and injects matching Referer and Origin headers.
+ */
+mpv.addHook("on_load", 50, (next) => {
+  try {
+    const currentUrl = mpv.getString("stream-open-filename");
+
+    if (currentUrl && (currentUrl.startsWith("http://") || currentUrl.startsWith("https://"))) {
+      try {
+        // Extract protocol and domain (e.g. https://www.example.com)
+        const parsedUrl = new URL(currentUrl);
+        const origin = `${parsedUrl.protocol}//${parsedUrl.host}`;
+
+        // Set referrer and browser headers so the CDN allows playback
+        mpv.set("referrer", currentUrl);
+        mpv.set("user-agent", DESKTOP_USER_AGENT);
+        mpv.set("http-header-fields", [
+          `Referer: ${currentUrl}`,
+          `Origin: ${origin}`,
+          `User-Agent: ${DESKTOP_USER_AGENT}`
+        ]);
+
+        console.log(`Stream Helper: Injected headers for host ${parsedUrl.host}`);
+      } catch (urlErr) {
+        // If URL parsing fails, still pass the full string as referrer
+        mpv.set("referrer", currentUrl);
+      }
+    }
+  } catch (err) {
+    console.log("Stream Helper: Hook on_load encountered an error: " + err);
+  }
+
+  // Continue playback flow
+  if (typeof next === "function") {
+    next();
+  }
+});
+
+/**
+ * Event: iina.file-loaded
+ * Runs once the media file or stream is loaded into the player.
+ * Checks whether an audio track is active, and automatically enables audio if silent.
+ */
+event.on("iina.file-loaded", () => {
+  try {
+    const path = mpv.getString("path") || "";
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+      // Check audio track status
+      const currentAid = mpv.getString("aid");
+      if (currentAid === "no" || currentAid === "0") {
+        // Audio was disabled or unselected; auto-select first audio track
+        mpv.set("aid", "auto");
+        core.osd("Audio stream auto-activated");
+        console.log("Stream Helper: Auto-activated audio track for stream.");
+      }
+    }
+  } catch (err) {
+    console.log("Stream Helper: Event file-loaded error: " + err);
+  }
+});
+
+// ==========================================
+// User Interface: In-App Menu Controls
+// ==========================================
 const streamMenu = menu.item("Stream Helper");
 
-// Submenu Item 1: Fix audio by enforcing matched stream protocols
+// Item 1: Optimize & Sync Active Stream
 streamMenu.addSubmenuItem(
-  menu.item("Fix Missing Audio (Match Protocols)", () => {
+  menu.item("Optimize & Sync Current Stream", () => {
+    try {
+      applyBaselineSettings();
+      mpv.set("aid", "auto");
+      core.osd("Stream synced (Universal format & 150MB buffer active)");
+    } catch (e) {
+      core.osd("Optimization failed");
+    }
+  })
+);
+
+// Item 2: Force DASH Protocol (Best for Indian OTT & segmented platforms)
+streamMenu.addSubmenuItem(
+  menu.item("Force DASH Audio-Video Match", () => {
     try {
       mpv.set(
         "ytdl-format",
-        "bestvideo[protocol*=dash]+bestaudio[protocol*=dash]/bestvideo+bestaudio/best"
+        "bestvideo[protocol*=dash]+bestaudio[protocol*=dash]/best"
       );
-      core.osd("Audio fix applied (DASH sync enabled)");
-      console.log("Applied DASH protocol matching for audio-video sync.");
-    } catch (err) {
-      console.log("Error configuring audio fix: " + err);
-      core.osd("Failed to apply audio fix");
+      core.osd("Format set to matched DASH");
+    } catch (e) {
+      core.osd("Failed to set DASH format");
     }
   })
 );
 
-// Submenu Item 2: Optimize buffer for streaming
+// Item 3: Force HLS Protocol (Best for standard live streams)
 streamMenu.addSubmenuItem(
-  menu.item("Optimize Buffer (150MB)", () => {
+  menu.item("Force HLS Audio-Video Match", () => {
     try {
-      mpv.set("demuxer-max-bytes", 157286400); // 150MB in bytes
-      mpv.set("demuxer-max-back-bytes", 52428800); // 50MB in bytes
-      core.osd("Stream buffer increased to 150MB");
-      console.log("Buffer optimization applied: 150MB forward, 50MB backward.");
-    } catch (err) {
-      console.log("Error configuring stream buffer: " + err);
-      core.osd("Failed to update buffer size");
+      mpv.set(
+        "ytdl-format",
+        "bestvideo[protocol*=m3u8]+bestaudio[protocol*=m3u8]/best"
+      );
+      core.osd("Format set to matched HLS");
+    } catch (e) {
+      core.osd("Failed to set HLS format");
     }
   })
 );
 
-// Submenu Item 3: Enable auto-reconnection for unstable networks
+// Item 4: Cycle / Select Audio Language Track
 streamMenu.addSubmenuItem(
-  menu.item("Enable Stream Reconnection", () => {
+  menu.item("Cycle Audio Track", () => {
     try {
-      mpv.set("network-timeout", 15);
-      mpv.set("stream-buffer-size", "4MiB");
-      core.osd("Auto-reconnection enabled (15s timeout)");
-      console.log("Network timeout and stream buffer size updated.");
-    } catch (err) {
-      console.log("Error configuring network reconnect: " + err);
-      core.osd("Failed to configure reconnection");
+      mpv.command("cycle", ["audio"]);
+      core.osd("Cycled to next audio track");
+    } catch (e) {
+      core.osd("Unable to cycle audio track");
     }
   })
 );
 
-// Submenu Item 4: Show active stream buffering status
+// Item 5: Buffer & Stream Status
 streamMenu.addSubmenuItem(
-  menu.item("Check Stream Cache Status", () => {
+  menu.item("Check Stream Cache & Health", () => {
     try {
       const currentPath = mpv.getString("path") || "No media loaded";
       const cacheSeconds = mpv.getNumber("demuxer-cache-duration") || 0;
-      const isPaused = mpv.getFlag("pause");
+      const aid = mpv.getString("aid") || "none";
 
       if (currentPath === "No media loaded") {
-        core.osd("No active stream playing");
+        core.osd("No active stream");
       } else {
-        const roundedCache = Math.round(cacheSeconds);
-        core.osd(`Buffered: ${roundedCache}s | State: ${isPaused ? "Paused" : "Playing"}`);
+        core.osd(`Buffered: ${Math.round(cacheSeconds)}s | Audio Track: ${aid}`);
       }
-    } catch (err) {
-      console.log("Error retrieving stream status: " + err);
+    } catch (e) {
       core.osd("Status check unavailable");
     }
   })
 );
 
-// Submenu Item 5: Apply Standard Browser Headers for CDN Verification
-streamMenu.addSubmenuItem(
-  menu.item("Apply Browser User-Agent", () => {
-    try {
-      const browserUA =
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-      mpv.set("user-agent", browserUA);
-      core.osd("Browser User-Agent applied");
-      console.log("User-agent updated to Chrome on macOS.");
-    } catch (err) {
-      console.log("Error setting user-agent: " + err);
-      core.osd("Failed to set User-Agent");
-    }
-  })
-);
-
-// Register the menu in IINA's UI
 menu.addItem(streamMenu);
+console.log("Stream Helper: Menu registered.");
